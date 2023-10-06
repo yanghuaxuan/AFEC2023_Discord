@@ -1,0 +1,20 @@
+{
+  "name": "Discord.js Template",
+  "version": "0.0.1",
+  "description": "Discord.js development template. Running node.js 18",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "@tsconfig/node18": "^18.2.2",
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1"
+  }
+}
