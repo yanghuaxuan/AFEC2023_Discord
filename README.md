@@ -1,7 +1,5 @@
 # Discord.js Template
-Simple template for bootstrap Discord.js development w/ Typescript and Eslint
-
-**Eslint is preconfigured with opinionated configuration!**
+Simple template for bootstrap Discord.js development w/ Typescript 
 
 ## Running
 1. Clone .env.example and modify
