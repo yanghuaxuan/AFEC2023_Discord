@@ -5,6 +5,7 @@
     "exclude": ["node_modules/**", "**/*.spec.ts"],
     "compilerOptions": {
         "outDir": "build",
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "esModuleInterop": true
     },
 }
