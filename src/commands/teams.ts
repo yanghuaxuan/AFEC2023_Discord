@@ -35,12 +35,20 @@ module.exports = {
 
         if (!PROGRAM_ID && !TOKEN) {
             await interaction.reply("Internal error!")
+            console.error("PROGRAM_ID and TOKEN env not set!")
+
             return
         }
 
         const url = proc.env.PC_PROGRAM_SERVICE_URL + `/programs/teams?program_id=${PROGRAM_ID}`
         const tokenHeader = new Headers({"Authorization": TOKEN as string})
         const resp = await fetch(url, {headers: tokenHeader})
+        if (resp.status !== 400 || !resp.json()) {
+            await interaction.reply("Internal error!)")
+            console.error("Could not fetch teams data from Pilotcity")
+
+            return
+        }
         const teams = (await resp.json() as ResponseJsonSchema).data
             .map(team => team.name);
 
