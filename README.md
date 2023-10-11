@@ -2,4 +2,6 @@
 
 Bot must have permissions for:
 - Use Slash Commands
-- 
+- Manage Channels
+- Read Messages/View Channels
+- Manage Roles
