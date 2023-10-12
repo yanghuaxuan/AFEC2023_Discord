@@ -29,12 +29,13 @@ module.exports = {
         }
 
         const teams = await fetchTeams();
+        let foundName = false;
+
         for (const team of teams) {
             const p_members = team.members;
             const DB_NAME = "db"
             const TABLE="channel_team"
 
-            let foundName = false;
             p_members.forEach(async (m) => {
                 if (m.firstName.toLowerCase() === fname && 
                     m.lastName.toLowerCase() === lname) {
@@ -63,10 +64,10 @@ module.exports = {
                         }
                 }
             })
+        }
 
-            if (!foundName) {
-                await interaction.reply("Could not find your name! Please try again.");
-            }
+        if (!foundName) {
+            await interaction.reply("Could not find your name! Please try again.");
         }
     },
 }  as Command;
