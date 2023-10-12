@@ -1,15 +1,16 @@
 import fs from "node:fs"
 import path from "node:path"
-import { Client, Events, Collection, GatewayIntentBits, SlashCommandBuilder, ChatInputCommandInteraction, Guild, CategoryChannel, ChannelType, GuildBasedChannel } from "discord.js"
+import { Client, Events, Collection, GatewayIntentBits, SlashCommandBuilder, ChatInputCommandInteraction, Guild, CategoryChannel, ChannelType, GuildBasedChannel, SlashCommandStringOption } from "discord.js"
 import "dotenv/config"
-import proc from "node:process"
 import { exec } from "node:child_process"
 import util from "node:util"
+import proc from "node:process"
+import { fetchTeams } from "./utils"
 
 const aexec = util.promisify(exec);
 
 export interface Command {
-	data: SlashCommandBuilder;
+	data: any;
 	execute: (interaction: ChatInputCommandInteraction)	=> void;
 }
 
@@ -67,58 +68,14 @@ client.once(Events.ClientReady, c => {
 });
 
 client.on(Events.ClientReady, c => {
-	interface MembersSchema {
-		_id: string;
-		firstName: string;
-		lastName: string;
-		avatar: string;
-	}
-
-	interface TeamSchema {
-		_id: string;
-		owner: string;
-		program_id: string;
-		name: string;
-		password: string;
-		members: MembersSchema[]
-		adks: Array<unknown>
-	}
-
-	interface ResponseJsonSchema {
-		message: string;
-		data: TeamSchema[];
-	}
-
 	// Setup database
 	const DB_NAME = "db"
 	const TABLE="channel_team"
-	exec(`echo 'CREATE TABLE IF NOT EXISTS ${TABLE} (d_channel_id TEXT PRIMARY KEY, pc_team_id TEXT);' | sqlite3 ${DB_NAME}`, (err) => {
+	exec(`echo 'CREATE TABLE IF NOT EXISTS ${TABLE} (d_channel_id TEXT PRIMARY KEY, d_role_id TEXT, pc_team_id TEXT);' | sqlite3 ${DB_NAME}`, (err) => {
 		if (err) {
 			console.error("An error occured while initializing database!", err)
 		}
 	})
-
-	// Fetch teams data from Pilotcity
-	async function fetchTeams(): Promise<TeamSchema[]> {
-		const PROGRAM_ID = proc.env.PC_PROGRAM_ID;
-		const TOKEN = proc.env.PC_OAUTH_TOKEN;
-
-		if (!PROGRAM_ID && !TOKEN) {
-			return [];
-		}
-
-		const url = proc.env.PC_PROGRAM_SERVICE_URL + `/programs/teams?program_id=${PROGRAM_ID}`
-		const tokenHeader = new Headers({"Authorization": TOKEN as string})
-		const resp = await fetch(url, {headers: tokenHeader})
-
-		if (resp.status !== 200) {
-			return []
-		}
-
-		const teams = (await resp.json() as ResponseJsonSchema).data
-
-		return teams
-	}
 
 	const categoryName = "AFEC Teams"
 
@@ -128,7 +85,7 @@ client.on(Events.ClientReady, c => {
 		const channels = guild.channels.cache;
 
 		// Cull non-existant Discord channels in DB
-		let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM ${TABLE};' | sqlite3 ${DB_NAME}`);
+		let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM ${TABLE};' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 		if(stderr) {
 			console.error(stderr)
 			return
@@ -137,7 +94,20 @@ client.on(Events.ClientReady, c => {
 			.filter((l) => l.length !== 0)
 			.map(async (gid) => {
 				if (!channels.has(gid)) {
-					let { stderr } = await aexec(`echo 'DELETE FROM ${TABLE} WHERE d_channel_id="${gid}";' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
+					// Clean role (maybe not needed?)
+					// let { stdout, stderr } = await aexec(`echo 'SELECT d_role_id FROM ${TABLE} WHERE d_channel_id=${gid};' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
+					// if (stderr) {
+					// 	console.error("An error occured while executing SQL statement!", stderr)
+					// 	return
+					// }
+					// const role = guild.roles.cache.get(stdout.trim());
+					// if (role) {
+					// 	guild.roles.delete(role);
+					// } else {
+					// 	console.warn("Could not get role while cull!");
+					// }
+
+					({ stderr } = await aexec(`echo 'DELETE FROM ${TABLE} WHERE d_channel_id="${gid}";' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`));
 					if (stderr) {
 						console.error("An error occured while executing SQL statement!", stderr)
 						return
@@ -147,19 +117,33 @@ client.on(Events.ClientReady, c => {
 
 		// Add Discord channel if the team does not have one
 		for (const team of teams) {
-			let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM channel_team WHERE pc_team_id="${team._id}";' | sqlite3 ${DB_NAME}`);
+			let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM ${TABLE} WHERE pc_team_id="${team._id}";' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 			if (stderr) {
 				console.error("An error occured while executing SQL statement!", stderr);
 				return
 			}
 			if (stdout.length === 0) {
 				const chan = await guild.channels.create({ name: team.name, reason: "New AFEC Team" });
-				let { stderr } = await aexec(`echo 'INSERT INTO ${TABLE} VALUES("${chan.id}", "${team._id}");' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
+				const role = await guild.roles.create({ name: team.name, reason: "New AFEC Team"});
+
+				let { stderr } = await aexec(`echo 'INSERT INTO ${TABLE} VALUES("${chan.id}", ${role.id}, "${team._id}");' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 				if (stderr) {
 					console.error("An error occured while executing SQL statement!", stderr)
 					return
 				}
-				chan.setParent(parent);
+
+				await chan.setParent(parent);
+
+				const everyone = guild.roles.everyone;
+				const clientUser = client.user;
+				if (everyone && clientUser) {
+					await chan.permissionOverwrites.edit(clientUser, {ViewChannel: true, ManageChannels: true});
+					await chan.permissionOverwrites.edit(everyone, {ViewChannel: false});
+					await chan.permissionOverwrites.edit(role, {ViewChannel: true});
+				} else {
+					console.error("An error occured while writig permissions to channel!");
+				}
+
 			}
 		}
 
