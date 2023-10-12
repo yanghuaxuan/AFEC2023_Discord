@@ -147,7 +147,7 @@ client.on(Events.ClientReady, c => {
 			}
 		}
 
-		// Cull "zombie" team channels which are no longer in Pilotcity
+		// Cull "zombie" team channels which are no longer in Pilotcity (Since you can't delete teams this probably isn't needed)
 		// Set C = Guild Channels in AFEC Teams category
 		// Set T = Pilotcity teams
 		// Set Z = C - T
