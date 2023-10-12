@@ -86,8 +86,8 @@ client.on(Events.ClientReady, c => {
 
 		// Cull non-existant Discord text channels in DB
 		// Note: Originally this was built with only text channels in mind. So if the text channel exists but its voice channel
-		//   doesn't, then voice channel will be added back when adding Discord channels. Else, if the text channel exists but the voice
-		//   channel exists, then the voice channel will be deleted.
+		//   doesn't, then voice channel will be added back when adding Discord channels. However, if the text channel exists but the VC doesn't
+		//   then it probably won't be added back. You shouldn't be deleting channels anyway.
 		let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM ${TABLE};' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 		if(stderr) {
 			console.error(stderr)
