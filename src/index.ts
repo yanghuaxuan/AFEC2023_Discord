@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { Client, Events, Collection, GatewayIntentBits, SlashCommandBuilder, ChatInputCommandInteraction, Guild, CategoryChannel, ChannelType, GuildBasedChannel, SlashCommandStringOption } from "discord.js"
+import { Client, Events, Collection, GatewayIntentBits, SlashCommandBuilder, ChatInputCommandInteraction, Guild, CategoryChannel, ChannelType, GuildBasedChannel, SlashCommandStringOption, GuildChannel } from "discord.js"
 import "dotenv/config"
 import { exec } from "node:child_process"
 import util from "node:util"
@@ -71,7 +71,7 @@ client.on(Events.ClientReady, c => {
 	// Setup database
 	const DB_NAME = "db"
 	const TABLE="channel_team"
-	exec(`echo 'CREATE TABLE IF NOT EXISTS ${TABLE} (d_channel_id TEXT PRIMARY KEY, d_role_id TEXT, pc_team_id TEXT);' | sqlite3 ${DB_NAME}`, (err) => {
+	exec(`echo 'CREATE TABLE IF NOT EXISTS ${TABLE} (d_channel_id TEXT PRIMARY KEY, d_vchannel_id TEXT, d_role_id TEXT, pc_team_id TEXT);' | sqlite3 ${DB_NAME}`, (err) => {
 		if (err) {
 			console.error("An error occured while initializing database!", err)
 		}
@@ -84,7 +84,10 @@ client.on(Events.ClientReady, c => {
 		const teams = await fetchTeams();
 		const channels = guild.channels.cache;
 
-		// Cull non-existant Discord channels in DB
+		// Cull non-existant Discord text channels in DB
+		// Note: Originally this was built with only text channels in mind. So if the text channel exists but its voice channel
+		//   doesn't, then voice channel will be added back when adding Discord channels. Else, if the text channel exists but the voice
+		//   channel exists, then the voice channel will be deleted.
 		let { stdout, stderr } = await aexec(`echo 'SELECT d_channel_id FROM ${TABLE};' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 		if(stderr) {
 			console.error(stderr)
@@ -107,6 +110,12 @@ client.on(Events.ClientReady, c => {
 					// 	console.warn("Could not get role while cull!");
 					// }
 
+					let { stdout, stderr } = await aexec(`echo 'SELECT d_vchannel_id FROM ${TABLE} WHERE d_channel_id=${gid};' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
+					const vc_id = stdout.trim();
+					if(vc_id) {
+						guild.channels.delete(vc_id);
+					}
+
 					({ stderr } = await aexec(`echo 'DELETE FROM ${TABLE} WHERE d_channel_id="${gid}";' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`));
 					if (stderr) {
 						console.error("An error occured while executing SQL statement!", stderr)
@@ -123,23 +132,30 @@ client.on(Events.ClientReady, c => {
 				return
 			}
 			if (stdout.length === 0) {
-				const chan = await guild.channels.create({ name: team.name, reason: "New AFEC Team" });
+				const textChan = await guild.channels.create({ name: team.name, reason: "New AFEC Team" });
+				const voiceChan = await guild.channels.create({ name:team.name, type: ChannelType.GuildVoice, reason: "New AFEC Team" });
 				const role = await guild.roles.create({ name: team.name, reason: "New AFEC Team"});
 
-				let { stderr } = await aexec(`echo 'INSERT INTO ${TABLE} VALUES("${chan.id}", ${role.id}, "${team._id}");' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
+				let { stderr } = await aexec(`echo 'INSERT INTO ${TABLE} VALUES("${textChan.id}", ${voiceChan.id}, ${role.id}, "${team._id}");' | sqlite3 -cmd ".timeout 1000" ${DB_NAME}`);
 				if (stderr) {
 					console.error("An error occured while executing SQL statement!", stderr)
 					return
 				}
 
-				await chan.setParent(parent);
+				await textChan.setParent(parent);
+				await voiceChan.setParent(parent);
 
 				const everyone = guild.roles.everyone;
 				const clientUser = client.user;
 				if (everyone && clientUser) {
-					await chan.permissionOverwrites.edit(clientUser, {ViewChannel: true, ManageChannels: true});
-					await chan.permissionOverwrites.edit(everyone, {ViewChannel: false});
-					await chan.permissionOverwrites.edit(role, {ViewChannel: true});
+					await textChan.permissionOverwrites.edit(clientUser, {ViewChannel: true, ManageChannels: true});
+					await voiceChan.permissionOverwrites.edit(clientUser, {ViewChannel: true, ManageChannels: true});
+
+					await textChan.permissionOverwrites.edit(everyone, {ViewChannel: false});
+					await voiceChan.permissionOverwrites.edit(everyone, {ViewChannel: false});
+
+					await textChan.permissionOverwrites.edit(role, {ViewChannel: true});
+					await voiceChan.permissionOverwrites.edit(role, {ViewChannel: true});
 				} else {
 					console.error("An error occured while writig permissions to channel!");
 				}
@@ -173,7 +189,7 @@ client.on(Events.ClientReady, c => {
 		})
 	}
 
-	// Run every 360 seconds
+	// Run every 60 seconds
 	async function poll() {
 		const guildId = proc.env.GUILD_ID;
 		let categoryChannel: CategoryChannel | undefined;
@@ -188,7 +204,6 @@ client.on(Events.ClientReady, c => {
 				}
 				else {
 					categoryChannel = await getTeamsCategory(guild);
-					console.log("Found category!")
 				}
 
 				if (categoryChannel) {
@@ -198,7 +213,7 @@ client.on(Events.ClientReady, c => {
 			}
 		}
 
-		setTimeout(poll, 5000)
+		setTimeout(poll, 60000)
 	}
 	poll()
 })
